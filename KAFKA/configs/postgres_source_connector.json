@@ -1,0 +1,17 @@
+{
+    "name": "postgres-source",
+    "config": {
+        "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+        "connection.url": "jdbc:postgresql://postgres:5432/dbname",
+        "connection.user": "postgres",
+        "connection.password": "postgres",
+        "mode": "incrementing",
+        "incrementing.column.name": "id",
+        "topic.prefix": "postgres-",
+        "table.whitelist": "public.your_table",
+        "poll.interval.ms": 5000,
+        "db.timezone": "UTC",
+        "timestamp.column.name": "updated_at",
+        "validate.non.null": false
+    }
+}

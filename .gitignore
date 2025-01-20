@@ -1,0 +1,122 @@
+# ---- Python ----
+# Byte-compiled / optimized / compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.pyenv/
+
+# Pip environment files
+*.pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# PyInstaller
+*.spec
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Pytest and coverage reports
+.cache/
+.pytest_cache/
+coverage.*
+htmlcov/
+
+# MyPy type-checker cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+
+# Flask files
+instance/
+*.log
+
+# ---- Node.js ----
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build files
+build/
+dist/
+.eslintcache
+
+# Static site generators
+.cache/
+.gatsby/
+
+# Next.js
+.next/
+out/
+
+# Parcel
+.cache/
+.parcel-cache/
+
+# ---- Kafka/Confluent ----
+# Logs and temporary files
+logs/
+*.log
+*.log.*
+*.out
+*.pid
+
+# Kafka/Confluent data directories
+data/
+tmp/
+kafka-logs/
+zookeeper/
+
+# Kafka Connect
+connect-logs/
+connect-offsets/
+connect-statuses/
+connect-configs/
+
+# Confluent metadata
+metadata/
+
+# Kafka Streams
+streams-logs/
+statestore/
+
+# ---- General ----
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml

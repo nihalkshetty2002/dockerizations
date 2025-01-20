@@ -1,0 +1,17 @@
+
+{
+    "name": "oracle-sink",
+    "config": {
+        "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+        "connection.url": "jdbc:oracle:thin:@oracle:1521/ORCLPDB1",
+        "connection.user": "system",
+        "connection.password": "password",
+        "topics": "topic1",
+        "auto.create": true,
+        "auto.evolve": true,
+        "insert.mode": "upsert",
+        "pk.mode": "record_key",
+        "pk.fields": "ID",
+        "db.timezone": "UTC"
+    }
+}

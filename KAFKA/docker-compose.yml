@@ -1,8 +1,21 @@
+# Docker Compose file for Confluent Platform 7.5.3
+# This configuration sets up a complete Kafka ecosystem including:
+# - Zookeeper for cluster coordination
+# - Kafka broker
+# - Schema Registry for managing Avro schemas
+# - Kafka Connect for data integration
+# - ksqlDB for stream processing
+# - Control Center for monitoring and management
+# Docs: https://www.confluent.io/previous-versions/
 ---
 version: '2'
 services:
+  #-----------------------------------------------------------------------------
+  # Zookeeper
+  # Manages cluster coordination and stores metadata
+  #-----------------------------------------------------------------------------
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.5.3
     hostname: zookeeper
     container_name: zookeeper
     ports:
@@ -10,17 +23,29 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
 
+  #-----------------------------------------------------------------------------
+  # Kafka Broker
+  # The main message broker service
+  #-----------------------------------------------------------------------------
   broker:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.5.3
     hostname: broker
     container_name: broker
     depends_on:
       - zookeeper
     ports:
-      - "29092:29092"
-      - "9092:9092"
-      - "9101:9101"
+      - "29092:29092"  # Internal broker communication
+      - "9092:9092"    # External broker communication
+      - "9101:9101"    # JMX metrics
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
@@ -32,9 +57,23 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
+      # Performance tuning
+      KAFKA_HEAP_OPTS: "-Xmx2G -Xms2G"
+      KAFKA_NUM_PARTITIONS: 3
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - kafka-data:/var/lib/kafka/data
 
+  #-----------------------------------------------------------------------------
+  # Schema Registry
+  # Manages and validates Avro schemas
+  #-----------------------------------------------------------------------------
   schema-registry:
-    image: confluentinc/cp-schema-registry:7.3.0
+    image: confluentinc/cp-schema-registry:7.5.3
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
@@ -45,9 +84,20 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092'
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      # Performance tuning
+      SCHEMA_REGISTRY_HEAP_OPTS: "-Xmx512M -Xms512M"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  #-----------------------------------------------------------------------------
+  # Kafka Connect
+  # Data integration framework for streaming data between Kafka and other systems
+  #-----------------------------------------------------------------------------
   connect:
-    image: cnfldemos/kafka-connect-datagen:0.6.0-7.3.0
+    image: confluentinc/cp-kafka-connect:7.5.3
     hostname: connect
     container_name: connect
     depends_on:
@@ -56,6 +106,7 @@ services:
     ports:
       - "8083:8083"
     environment:
+      # Basic Kafka Connect Configuration
       CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
       CONNECT_GROUP_ID: compose-connect-group
@@ -66,38 +117,117 @@ services:
       CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      
+      # Converters Configuration
       CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      # Assumes image is based on confluentinc/kafka-connect-datagen:latest which is pulling 5.3.0 Connect image
-      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-5.3.0.jar
-          # JDBC connector plugins
-      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+      
+      # Additional Converters
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "true"
+      
+      # Plugin Path Configuration
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/usr/local/share/kafka/plugins"
+      
+      # Connector Configurations
+      # MongoDB
+      CONNECT_CONNECTOR_CLASS: "com.mongodb.kafka.connect.MongoSourceConnector"
+      MONGODB_SOURCE_PLUGIN_URL: "https://repo1.maven.org/maven2/org/mongodb/kafka/mongo-kafka-connect/1.11.1/mongo-kafka-connect-1.11.1-all.jar"
+      
+      # JDBC Common Settings
+      CONNECT_JDBC_SOURCE_CONNECTOR_CLASS: "io.confluent.connect.jdbc.JdbcSourceConnector"
+      CONNECT_JDBC_SINK_CONNECTOR_CLASS: "io.confluent.connect.jdbc.JdbcSinkConnector"
+      
+      # Elasticsearch Settings
+      CONNECT_ELASTICSEARCH_CONNECTOR_CLASS: "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector"
+      
+      # S3 Settings
+      CONNECT_S3_CONNECTOR_CLASS: "io.confluent.connect.s3.S3SinkConnector"
+      
+      # Debezium Settings for CDC
+      CONNECT_DEBEZIUM_SOURCE_CONNECTOR_CLASS: "io.debezium.connector.mysql.MySqlConnector"
+      
+      # Performance and Monitoring
       CONNECT_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
       CONNECT_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor"
-      # JDBC source connector driver
-      JDBC_PLUGIN_URL: "https://github.com/confluentinc/kafka-connect-jdbc/releases/download/v10.2.1/kafka-connect-jdbc-10.2.1.tar.gz"
-      JDBC_PLUGIN_SHA256SUM: "af6697a2b45d9f7a1f92a904cb7c3e6b81b6a2a6f977cc37f9cc83e33d360c5c"
-      # MongoDB connector plugins
-      # MongoDB source connector driver
-      MONGODB_SOURCE_PLUGIN_URL: "https://github.com/mongodb/mongo-kafka/releases/download/r1.7.0/mongo-kafka-1.7.0-all.jar"
-      MONGODB_SOURCE_PLUGIN_CLASS_NAME: "com.mongodb.kafka.connect.MongoSourceConnector"
-      # MongoDB sink connector driver
-      MONGODB_SINK_PLUGIN_URL: "https://github.com/mongodb/mongo-kafka/releases/download/r1.7.0/mongo-kafka-1.7.0-all.jar"
-      MONGODB_SINK_PLUGIN_CLASS_NAME: "com.mongodb.kafka.connect.MongoSinkConnector"
+      CONNECT_HEAP_OPTS: "-Xmx2G -Xms2G"
+      
+      # Error Handling and Retries
+      CONNECT_ERRORS_TOLERANCE: "all"
+      CONNECT_ERRORS_LOG_ENABLE: "true"
+      CONNECT_ERRORS_LOG_INCLUDE_MESSAGES: "true"
+      CONNECT_MAX_REQUEST_SIZE: "10485760"
+      CONNECT_REQUEST_TIMEOUT_MS: "20000"
+      
     command:
       - bash
       - -c
       - |
-        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.2.1
-        confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.7.0
+        echo "Installing connectors and plugins..."
+        
+        # Install JDBC connectors
+        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.4
+        
+        # Install MongoDB connector
+        confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.11.1
+        
+        # Install Elasticsearch connector
+        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.8
+        
+        # Install S3 connector
+        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.8
+        
+        # Install Debezium connectors
+        confluent-hub install --no-prompt debezium/debezium-connector-mysql:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-sqlserver:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-mongodb:2.4.0
+        
+        # Install additional connectors
+        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-blob-storage:1.6.7
+        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-data-lake-gen2-storage:1.6.7
+        confluent-hub install --no-prompt confluentinc/kafka-connect-gcs:10.1.1
+        
+        # Download JDBC drivers
+        cd /usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc
+        
+        # PostgreSQL JDBC driver
+        curl -k -SL "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar" -o postgresql-42.6.0.jar
+        
+        # MySQL JDBC driver
+        curl -k -SL "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.33/mysql-connector-j-8.0.33.jar" -o mysql-connector-j-8.0.33.jar
+        
+        # MSSQL JDBC driver
+        curl -k -SL "https://github.com/microsoft/mssql-jdbc/releases/download/v12.4.1/mssql-jdbc-12.4.1.jre11.jar" -o mssql-jdbc-12.4.1.jre11.jar
+        
+        # Create directories for custom configurations
+        mkdir -p /etc/kafka-connect/custom-plugins
+        
+        echo "Launching Kafka Connect worker..."
         /etc/confluent/docker/run
+        
     volumes:
+      - connect-data:/usr/share/confluent-hub-components
       - ./connect-config:/etc/kafka-connect/
-      - ./jdbc-drivers:/usr/share/confluent-hub-components/
-      
+      - ./custom-plugins:/etc/kafka-connect/custom-plugins
+      - ./jdbc-drivers:/usr/share/confluent-hub-components/jdbc-drivers
+      - ./mongodb-connect-config:/etc/kafka-connect/mongodb
+      - ./elasticsearch-connect-config:/etc/kafka-connect/elasticsearch
+      - ./s3-connect-config:/etc/kafka-connect/s3
+      - ./debezium-connect-config:/etc/kafka-connect/debezium
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  #-----------------------------------------------------------------------------
+  # ksqlDB Server
+  # Stream processing engine
+  #-----------------------------------------------------------------------------
   ksqldb-server:
-    image: confluentinc/cp-ksqldb-server:7.3.0
+    image: confluentinc/cp-ksqldb-server:7.5.3
     hostname: ksqldb-server
     container_name: ksqldb-server
     depends_on:
@@ -116,9 +246,20 @@ services:
       KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
       KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: 'true'
       KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: 'true'
+      # Performance tuning
+      KSQL_HEAP_OPTS: "-Xmx1G -Xms1G"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  #-----------------------------------------------------------------------------
+  # ksqlDB CLI
+  # Command line interface for ksqlDB
+  #-----------------------------------------------------------------------------
   ksqldb-cli:
-    image: confluentinc/cp-ksqldb-cli:7.3.0
+    image: confluentinc/cp-ksqldb-cli:7.5.3
     container_name: ksqldb-cli
     depends_on:
       - broker
@@ -127,58 +268,55 @@ services:
     entrypoint: /bin/sh
     tty: true
 
-  ksql-datagen:
-    image: confluentinc/ksqldb-examples:7.3.0
-    hostname: ksql-datagen
-    container_name: ksql-datagen
+  #-----------------------------------------------------------------------------
+  # Control Center
+  # Web UI for managing and monitoring Kafka cluster
+  #-----------------------------------------------------------------------------
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.5.3
+    hostname: control-center
+    container_name: control-center
     depends_on:
-      - ksqldb-server
       - broker
       - schema-registry
       - connect
-    command: "bash -c 'echo Waiting for Kafka to be ready... && \
-                       cub kafka-ready -b broker:29092 1 40 && \
-                       echo Waiting for Confluent Schema Registry to be ready... && \
-                       cub sr-ready schema-registry 8081 40 && \
-                       echo Waiting a few seconds for topic creation to finish... && \
-                       sleep 11 && \
-                       tail -f /dev/null'"
-    environment:
-      KSQL_CONFIG_DIR: "/etc/ksql"
-      STREAMS_BOOTSTRAP_SERVERS: broker:29092
-      STREAMS_SCHEMA_REGISTRY_HOST: schema-registry
-      STREAMS_SCHEMA_REGISTRY_PORT: 8081
-
-  rest-proxy:
-    image: confluentinc/cp-kafka-rest:7.3.0
-    depends_on:
-      - broker
-      - schema-registry
+      - ksqldb-server
     ports:
-      - 8082:8082
-    hostname: rest-proxy
-    container_name: rest-proxy
+      - "9021:9021"
     environment:
-      KAFKA_REST_HOST_NAME: rest-proxy
-      KAFKA_REST_BOOTSTRAP_SERVERS: 'broker:29092'
-      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
-      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      CONTROL_CENTER_CONNECT_URL: 'http://connect:8083'
+      CONTROL_CENTER_KSQL_URL: 'http://ksqldb-server:8088'
+      CONTROL_CENTER_KSQL_ADVERTISED_URL: 'http://ksqldb-server:8088'
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      # Performance tuning
+      CONTROL_CENTER_HEAP_OPTS: "-Xmx2G -Xms2G"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9021"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - control-center-data:/var/lib/confluent-control-center
 
-  control-center:
-      image: confluentinc/cp-enterprise-control-center:7.3.0
-      hostname: control-center
-      container_name: control-center
-      depends_on:
-        - broker
-        - schema-registry
-        - connect
-      ports:
-        - "9021:9021"
-      environment:
-        CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'
-        CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-        CONTROL_CENTER_CONNECT_URL: 'http://connect:8083'
-        CONTROL_CENTER_KSQL_URL: 'http://ksqldb-server:8088'
-        CONTROL_CENTER_KSQL_ADVERTISED_URL: 'http://ksqldb-server:8088'
-        CONTROL_CENTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
-        CONTROL_CENTER_REPLICATION_FACTOR: 1
+#-----------------------------------------------------------------------------
+# Volume Definitions
+# Persistent storage for Kafka ecosystem
+#-----------------------------------------------------------------------------
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+  connect-data:
+  control-center-data:
+
+#-----------------------------------------------------------------------------
+# Networks
+# Defined network for Kafka ecosystem
+#-----------------------------------------------------------------------------
+networks:
+  default:
+    name: kafka-network
+    driver: bridge
