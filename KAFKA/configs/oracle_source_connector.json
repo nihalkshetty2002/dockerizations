@@ -1,0 +1,17 @@
+
+{
+    "name": "oracle-source",
+    "config": {
+        "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+        "connection.url": "jdbc:oracle:thin:@oracle:1521/ORCLPDB1",
+        "connection.user": "system",
+        "connection.password": "password",
+        "mode": "timestamp+incrementing",
+        "timestamp.column.name": "LAST_MODIFIED",
+        "incrementing.column.name": "ID",
+        "topic.prefix": "oracle-",
+        "table.whitelist": "your_table",
+        "poll.interval.ms": 5000,
+        "db.timezone": "UTC"
+    }
+}
