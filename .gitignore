@@ -120,3 +120,9 @@ desktop.ini
 .idea/
 .vscode/
 *.iml
+
+# Run time files
+*.jar
+*.war
+*.ear
+jdbc-drivers
