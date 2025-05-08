@@ -105,6 +105,7 @@ services:
       - schema-registry
     ports:
       - "8083:8083"
+    user: "root"  # Temporarily use root to set up permissions
     environment:
       # Basic Kafka Connect Configuration
       CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
@@ -127,26 +128,9 @@ services:
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "true"
       
-      # Plugin Path Configuration
-      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/usr/local/share/kafka/plugins"
-      
-      # Connector Configurations
-      # MongoDB
-      CONNECT_CONNECTOR_CLASS: "com.mongodb.kafka.connect.MongoSourceConnector"
-      MONGODB_SOURCE_PLUGIN_URL: "https://repo1.maven.org/maven2/org/mongodb/kafka/mongo-kafka-connect/1.11.1/mongo-kafka-connect-1.11.1-all.jar"
-      
-      # JDBC Common Settings
-      CONNECT_JDBC_SOURCE_CONNECTOR_CLASS: "io.confluent.connect.jdbc.JdbcSourceConnector"
-      CONNECT_JDBC_SINK_CONNECTOR_CLASS: "io.confluent.connect.jdbc.JdbcSinkConnector"
-      
-      # Elasticsearch Settings
-      CONNECT_ELASTICSEARCH_CONNECTOR_CLASS: "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector"
-      
-      # S3 Settings
-      CONNECT_S3_CONNECTOR_CLASS: "io.confluent.connect.s3.S3SinkConnector"
-      
-      # Debezium Settings for CDC
-      CONNECT_DEBEZIUM_SOURCE_CONNECTOR_CLASS: "io.debezium.connector.mysql.MySqlConnector"
+      # Connector Installation Paths
+      CONFLUENT_HUB_DIR: "/usr/share/confluent-hub-components"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/usr/local/share/kafka/plugins,/etc/kafka-connect/custom-plugins"
       
       # Performance and Monitoring
       CONNECT_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
@@ -164,52 +148,44 @@ services:
       - bash
       - -c
       - |
+        echo "Setting up permissions..."
+        mkdir -p /usr/share/confluent-hub-components/jdbc-drivers
+        mkdir -p /etc/kafka-connect/custom-plugins
+        mkdir -p /etc/kafka-connect/mongodb
+        mkdir -p /etc/kafka-connect/elasticsearch
+        mkdir -p /etc/kafka-connect/s3
+        mkdir -p /etc/kafka-connect/debezium
+        
+        chown -R appuser:appuser /usr/share/confluent-hub-components
+        chown -R appuser:appuser /etc/kafka-connect
+        chmod -R 755 /usr/share/confluent-hub-components
+        chmod -R 755 /etc/kafka-connect
+        
         echo "Installing connectors and plugins..."
-        
-        # Install JDBC connectors
         confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.4
-        
-        # Install MongoDB connector
         confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.11.1
-        
-        # Install Elasticsearch connector
         confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.8
-        
-        # Install S3 connector
         confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.8
-        
-        # Install Debezium connectors
         confluent-hub install --no-prompt debezium/debezium-connector-mysql:2.4.0
         confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.4.0
         confluent-hub install --no-prompt debezium/debezium-connector-sqlserver:2.4.0
         confluent-hub install --no-prompt debezium/debezium-connector-mongodb:2.4.0
-        
-        # Install additional connectors
         confluent-hub install --no-prompt confluentinc/kafka-connect-azure-blob-storage:1.6.7
         confluent-hub install --no-prompt confluentinc/kafka-connect-azure-data-lake-gen2-storage:1.6.7
         confluent-hub install --no-prompt confluentinc/kafka-connect-gcs:10.1.1
         
-        # Download JDBC drivers
-        cd /usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc
+        cd /usr/share/confluent-hub-components/jdbc-drivers
         
-        # PostgreSQL JDBC driver
+        echo "Downloading JDBC drivers..."
         curl -k -SL "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar" -o postgresql-42.6.0.jar
-        
-        # MySQL JDBC driver
         curl -k -SL "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.33/mysql-connector-j-8.0.33.jar" -o mysql-connector-j-8.0.33.jar
-        
-        # MSSQL JDBC driver
         curl -k -SL "https://github.com/microsoft/mssql-jdbc/releases/download/v12.4.1/mssql-jdbc-12.4.1.jre11.jar" -o mssql-jdbc-12.4.1.jre11.jar
         
-        # Create directories for custom configurations
-        mkdir -p /etc/kafka-connect/custom-plugins
-        
-        echo "Launching Kafka Connect worker..."
-        /etc/confluent/docker/run
-        
+        # Switch back to appuser before starting Kafka Connect
+        su appuser -c '/etc/confluent/docker/run'
     volumes:
       - connect-data:/usr/share/confluent-hub-components
-      - ./connect-config:/etc/kafka-connect/
+      - ./connect-config:/etc/kafka-connect
       - ./custom-plugins:/etc/kafka-connect/custom-plugins
       - ./jdbc-drivers:/usr/share/confluent-hub-components/jdbc-drivers
       - ./mongodb-connect-config:/etc/kafka-connect/mongodb
