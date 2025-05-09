@@ -1,51 +1,99 @@
-const KafkaRestProxyService = require('./services/KafkaRestProxyService');
+/**
+ * Entry point for Kafka operations
+ * Exports all Kafka related functionality
+ */
+require('dotenv').config();
 const config = require('./config/config');
 
-async function main() {
-  const restProxy = new KafkaRestProxyService({
-    ...config.kafkaRestProxy,
-    // clusterID is optional; will be auto-detected if only one cluster exists
-  });
+// Import Kafka producers and consumers
+const KafkaProducer = require('./producers/kafka-producer');
+const KafkaConsumer = require('./consumers/kafka-consumer');
 
-  try {
-    // Initialize the service to fetch cluster ID if not provided
-    await restProxy.initialize();
+// Import Kafka services
+const KafkaService = require('./services/KafkaService');
+const KafkaRestProxyService = require('./services/KafkaRestProxyService');
+const SchemaRegistryService = require('./services/SchemaRegistryService');
+const KafkaConnectService = require('./services/KafkaConnectService');
+const KsqlDBService = require('./services/KsqlDBService');
+const ControlCenterService = require('./services/ControlCenterService');
 
-    // Check existing topics
-    console.log('Checking existing topics...');
-    const topics = await restProxy.listTopics();
-    console.log('Available topics:', topics);
+// Import connectors
+const BaseConnector = require('./connectors/base-connector');
+const MongoDBConnector = require('./connectors/mongodb-connector');
 
-    // Create topic if it doesn't exist
-    console.log('Creating topic users...');
-    await restProxy.createTopic('users', {
-      partitions: 3,
-      replicationFactor: 1, // Using 1 for single broker setup
-      configs: {
-        'cleanup.policy': 'delete',
-        'retention.ms': '604800000' // 7 days
-      }
-    });
-    console.log('Topic created successfully');
+// Import utils
+const KafkaAdmin = require('./utils/kafka-admin');
 
-    // Produce a message
-    console.log('Producing message...');
-    const messageResponse = await restProxy.produceMessage(
-      'users',
-      { name: 'Bob', timestamp: new Date().toISOString() },
-      { key: 'user-1' }
-    );
-    console.log('Message produced:', messageResponse);
-
-    // List partitions
-    console.log('Listing partitions...');
-    const partitions = await restProxy.listPartitions('users');
-    console.log('Partitions:', partitions);
-
-  } catch (error) {
-    console.error('Error:', error.message);
-    process.exit(1);
-  }
+/**
+ * Create a new Kafka producer instance with the provided options
+ * 
+ * @param {Object} options - Producer options
+ * @returns {KafkaProducer} - A new Kafka producer instance
+ */
+function createProducer(options = {}) {
+  return new KafkaProducer(options);
 }
 
-main();
+/**
+ * Create a new Kafka consumer instance with the provided options
+ * 
+ * @param {Object} options - Consumer options
+ * @returns {KafkaConsumer} - A new Kafka consumer instance
+ */
+function createConsumer(options = {}) {
+  return new KafkaConsumer(options);
+}
+
+/**
+ * Create a new MongoDB connector
+ * 
+ * @param {Object} options - MongoDB connector options
+ * @returns {MongoDBConnector} - A new MongoDB connector instance
+ */
+function createMongoDBConnector(options = {}) {
+  return new MongoDBConnector(options);
+}
+
+/**
+ * Get the configuration
+ * 
+ * @returns {Object} - The current configuration
+ */
+function getConfig() {
+  return config;
+}
+
+/**
+ * Create a Kafka admin utility instance
+ * 
+ * @returns {KafkaAdmin} - A new Kafka admin instance
+ */
+function createAdmin() {
+  return new KafkaAdmin(config.KAFKA.core);
+}
+
+// Export all the functionality
+module.exports = {
+  // Core functionality
+  createProducer,
+  createConsumer,
+  createMongoDBConnector,
+  createAdmin,
+  getConfig,
+  
+  // Classes for advanced usage
+  KafkaProducer,
+  KafkaConsumer,
+  KafkaService,
+  KafkaRestProxyService,
+  SchemaRegistryService,
+  KafkaConnectService,
+  KsqlDBService,
+  ControlCenterService,
+  BaseConnector,
+  MongoDBConnector,
+  KafkaAdmin,
+  
+  // Configuration
+  config
+}; 

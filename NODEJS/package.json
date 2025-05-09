@@ -5,10 +5,26 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "api": "node src/api.js",
+    "server": "node src/server.js",
+    "demo": "node src/index.js",
+    "producer": "node src/producer.js",
+    "consumer": "node src/consumer.js",
+    "mongodb:connector": "node src/mongodb-connector.js",
+    "mongodb:consumer": "node src/mongodb-consumer.js",
+    "mongodb:insert": "node src/mongodb-test-data.js insert",
+    "mongodb:update": "node src/mongodb-test-data.js update",
+    "mongodb:delete": "node src/mongodb-test-data.js delete",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "axios": "^1.4.0",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "kafkajs": "^2.2.4",
+    "body-parser": "^1.20.2",
+    "uuid": "^9.0.0",
+    "cors": "^2.8.5",
+    "mongodb": "^5.7.0"
   }
 }
