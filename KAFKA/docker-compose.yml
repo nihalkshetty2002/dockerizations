@@ -9,7 +9,7 @@
 # - Kafka REST Proxy for RESTful interface
 # Docs: https://www.confluent.io/previous-versions/
 ---
-version: '2'
+name: kafka-ecosystem
 services:
   #-----------------------------------------------------------------------------
   # Zookeeper
