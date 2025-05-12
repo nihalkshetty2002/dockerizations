@@ -12,7 +12,7 @@ async function setupConnectors() {
         config: {
             'connector.class': 'io.confluent.connect.jdbc.JdbcSourceConnector',
             'tasks.max': 1,
-            'connection.url': "jdbc:postgresql://localhost:5432/postgres" ,
+            'connection.url': "jdbc:postgresql://localhost:5432/postgres",
             'connection.user': "postgres",
             'connection.password': "admin",
             'table.whitelist': "messages",
@@ -51,7 +51,7 @@ async function setupConnectors() {
         await connectService.createConnector(postgresSourceConfig);
         console.log('PostgreSQL Source Connector created successfully');
 
-        // Create MongoDB Sink Connector
+        // // Create MongoDB Sink Connector
         // console.log('Creating MongoDB Sink Connector...');
         // await connectService.createConnector(mongodbSinkConfig);
         // console.log('MongoDB Sink Connector created successfully');
@@ -59,8 +59,10 @@ async function setupConnectors() {
         // Verify connector status
         const sourceStatus = await connectService.getConnectorStatus('postgres-source-connector');
         // const sinkStatus = await connectService.getConnectorStatus('mongodb-sink-connector');
+        // const sinkStatus = await connectService.getConnectorStatus('mongodb-sink-connector');
 
         console.log('PostgreSQL Source Connector Status:', sourceStatus);
+        // console.log('MongoDB Sink Connector Status:', sinkStatus);
         // console.log('MongoDB Sink Connector Status:', sinkStatus);
 
     } catch (error) {
