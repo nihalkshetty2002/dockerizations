@@ -1,4 +1,4 @@
-const { KafkaConnectService } = require('../src/services');
+const KafkaConnectService  = require('../NODEJS/src/services/KafkaConnectService');
 require('dotenv').config();
 
 async function setupConnectors() {
@@ -8,11 +8,11 @@ async function setupConnectors() {
 
     // PostgreSQL Source Connector Configuration
     const postgresSourceConfig = {
-        name: 'postgres-source-connector',
+        name: 'postgres-source-connector1',
         config: {
             'connector.class': 'io.confluent.connect.jdbc.JdbcSourceConnector',
             'tasks.max': 1,
-            'connection.url': "jdbc:postgresql://localhost:5432/postgres" ,
+            'connection.url': "jdbc:postgresql://host.docker.internal:5432/postgres" ,
             'connection.user': "postgres",
             'connection.password': "admin",
             'table.whitelist': "messages",
