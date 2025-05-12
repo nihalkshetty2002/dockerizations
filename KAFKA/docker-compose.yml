@@ -1,15 +1,3 @@
-# Docker Compose file for Confluent Platform 7.5.3
-# This configuration sets up a complete Kafka ecosystem including:
-# - Zookeeper for cluster coordination
-# - Kafka broker
-# - Schema Registry for managing Avro schemas
-# - Kafka Connect for data integration
-# - ksqlDB for stream processing
-# - Control Center for monitoring and management
-# - Kafka REST Proxy for RESTful interface
-# Docs: https://www.confluent.io/previous-versions/
----
-version: '2'
 services:
   #-----------------------------------------------------------------------------
   # Zookeeper
@@ -29,6 +17,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
@@ -42,8 +31,7 @@ services:
     hostname: broker
     container_name: broker
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     ports:
       - "29092:29092"  # Internal broker communication
       - "9092:9092"    # External broker communication
@@ -68,7 +56,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 30s
     volumes:
       - kafka-data:/var/lib/kafka/data
 
@@ -81,10 +69,7 @@ services:
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
-      broker:
-        condition: service_healthy
-      zookeeper:
-        condition: service_healthy
+      - broker
     ports:
       - "8081:8081"
     environment:
@@ -98,9 +83,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   #-----------------------------------------------------------------------------
-  # Kafka Connect
+  # Kafka Connect (Base Setup)
   # Data integration framework for streaming data between Kafka and other systems
   #-----------------------------------------------------------------------------
   connect:
@@ -108,13 +94,10 @@ services:
     hostname: connect
     container_name: connect
     depends_on:
-      broker:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
+      - broker
+      - schema-registry
     ports:
       - "8083:8083"
-    user: "root"  # Temporarily use root to set up permissions
     environment:
       # Basic Kafka Connect Configuration
       CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
@@ -153,11 +136,12 @@ services:
       CONNECT_MAX_REQUEST_SIZE: "10485760"
       CONNECT_REQUEST_TIMEOUT_MS: "20000"
       
+    # First start the container with basic setup
     command:
       - bash
       - -c
       - |
-        echo "Setting up permissions..."
+        echo "Setting up base directories..."
         mkdir -p /usr/share/confluent-hub-components/jdbc-drivers
         mkdir -p /etc/kafka-connect/custom-plugins
         mkdir -p /etc/kafka-connect/mongodb
@@ -165,33 +149,14 @@ services:
         mkdir -p /etc/kafka-connect/s3
         mkdir -p /etc/kafka-connect/debezium
         
-        chown -R appuser:appuser /usr/share/confluent-hub-components
-        chown -R appuser:appuser /etc/kafka-connect
-        chmod -R 755 /usr/share/confluent-hub-components
-        chmod -R 755 /etc/kafka-connect
-        
-        echo "Installing connectors and plugins..."
-        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.4
-        confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.11.1
-        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.8
-        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.8
-        confluent-hub install --no-prompt debezium/debezium-connector-mysql:2.4.0
-        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.4.0
-        confluent-hub install --no-prompt debezium/debezium-connector-sqlserver:2.4.0
-        confluent-hub install --no-prompt debezium/debezium-connector-mongodb:2.4.0
-        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-blob-storage:1.6.7
-        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-data-lake-gen2-storage:1.6.7
-        confluent-hub install --no-prompt confluentinc/kafka-connect-gcs:10.1.1
-        
-        cd /usr/share/confluent-hub-components/jdbc-drivers
-        
-        echo "Downloading JDBC drivers..."
-        curl -k -SL "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar" -o postgresql-42.6.0.jar
-        curl -k -SL "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.33/mysql-connector-j-8.0.33.jar" -o mysql-connector-j-8.0.33.jar
-        curl -k -SL "https://github.com/microsoft/mssql-jdbc/releases/download/v12.4.1/mssql-jdbc-12.4.1.jre11.jar" -o mssql-jdbc-12.4.1.jre11.jar
-        
-        # Switch back to appuser before starting Kafka Connect
-        su appuser -c '/etc/confluent/docker/run'
+        echo "Starting Kafka Connect with basic configuration..."
+        /etc/confluent/docker/run
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     volumes:
       - connect-data:/usr/share/confluent-hub-components
       - ./connect-config:/etc/kafka-connect
@@ -201,11 +166,33 @@ services:
       - ./elasticsearch-connect-config:/etc/kafka-connect/elasticsearch
       - ./s3-connect-config:/etc/kafka-connect/s3
       - ./debezium-connect-config:/etc/kafka-connect/debezium
+
+  #-----------------------------------------------------------------------------
+  # Kafka REST Proxy
+  # RESTful interface to Kafka cluster
+  #-----------------------------------------------------------------------------
+  kafka-rest:
+    image: confluentinc/cp-kafka-rest:7.5.3
+    hostname: kafka-rest
+    container_name: kafka-rest
+    depends_on:
+      - broker
+      - schema-registry
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_REST_HOST_NAME: kafka-rest
+      KAFKA_REST_BOOTSTRAP_SERVERS: 'broker:29092'
+      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
+      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      # Performance tuning
+      KAFKA_REST_HEAP_OPTS: "-Xmx512M -Xms512M"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083"]
+      test: ["CMD", "curl", "-f", "http://localhost:8082"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   #-----------------------------------------------------------------------------
   # ksqlDB Server
@@ -216,12 +203,9 @@ services:
     hostname: ksqldb-server
     container_name: ksqldb-server
     depends_on:
-      broker:
-        condition: service_healthy
-      connect:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
+      - broker
+      - connect
+      - schema-registry
     ports:
       - "8088:8088"
     environment:
@@ -242,6 +226,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 45s
 
   #-----------------------------------------------------------------------------
   # ksqlDB CLI
@@ -251,12 +236,7 @@ services:
     image: confluentinc/cp-ksqldb-cli:7.5.3
     container_name: ksqldb-cli
     depends_on:
-      broker:
-        condition: service_healthy
-      connect:
-        condition: service_healthy
-      ksqldb-server:
-        condition: service_healthy
+      - ksqldb-server
     entrypoint: /bin/sh
     tty: true
 
@@ -269,14 +249,10 @@ services:
     hostname: control-center
     container_name: control-center
     depends_on:
-      broker:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
-      connect:
-        condition: service_healthy
-      ksqldb-server:
-        condition: service_healthy
+      - broker
+      - schema-registry
+      - connect
+      - ksqldb-server
     ports:
       - "9021:9021"
     environment:
@@ -294,36 +270,83 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     volumes:
       - control-center-data:/var/lib/confluent-control-center
 
   #-----------------------------------------------------------------------------
-  # Kafka REST Proxy
-  # RESTful interface to Kafka cluster
+  # Connector Installer
+  # Separate service to install connectors after Connect is up and running
   #-----------------------------------------------------------------------------
-  kafka-rest:
-    image: confluentinc/cp-kafka-rest:7.5.3
-    hostname: kafka-rest
-    container_name: kafka-rest
+  connector-installer:
+    image: confluentinc/cp-kafka-connect:7.5.3
+    container_name: connector-installer
     depends_on:
-      broker:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
-    ports:
-      - "8082:8082"
-    environment:
-      KAFKA_REST_HOST_NAME: kafka-rest
-      KAFKA_REST_BOOTSTRAP_SERVERS: 'broker:29092'
-      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
-      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
-      # Performance tuning
-      KAFKA_REST_HEAP_OPTS: "-Xmx512M -Xms512M"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - connect
+    restart: "no"
+    command:
+      - bash
+      - -c
+      - |
+        echo "Waiting for Connect to be ready..."
+        while ! curl -s http://connect:8083 > /dev/null; do
+          sleep 5
+          echo "Waiting for Connect..."
+        done
+        
+        echo "Connect is ready. Installing connectors..."
+        
+        # Set permissions for directories
+        chown -R appuser:appuser /usr/share/confluent-hub-components
+        chown -R appuser:appuser /etc/kafka-connect
+        chmod -R 755 /usr/share/confluent-hub-components
+        chmod -R 755 /etc/kafka-connect
+        
+        # Install connectors
+        echo "Installing JDBC connector..."
+        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.4
+        
+        echo "Installing MongoDB connector..."
+        confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.11.1
+        
+        echo "Installing Elasticsearch connector..."
+        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.8
+        
+        echo "Installing S3 connector..."
+        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.8
+        
+        echo "Installing Debezium connectors..."
+        confluent-hub install --no-prompt debezium/debezium-connector-mysql:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-sqlserver:2.4.0
+        confluent-hub install --no-prompt debezium/debezium-connector-mongodb:2.4.0
+        
+        echo "Installing Azure connectors..."
+        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-blob-storage:1.6.7
+        confluent-hub install --no-prompt confluentinc/kafka-connect-azure-data-lake-gen2-storage:1.6.7
+        
+        echo "Installing GCS connector..."
+        confluent-hub install --no-prompt confluentinc/kafka-connect-gcs:10.1.1
+        
+        echo "Downloading JDBC drivers..."
+        cd /usr/share/confluent-hub-components/jdbc-drivers
+        curl -k -SL "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar" -o postgresql-42.6.0.jar
+        curl -k -SL "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.33/mysql-connector-j-8.0.33.jar" -o mysql-connector-j-8.0.33.jar
+        curl -k -SL "https://github.com/microsoft/mssql-jdbc/releases/download/v12.4.1/mssql-jdbc-12.4.1.jre11.jar" -o mssql-jdbc-12.4.1.jre11.jar
+        
+        echo "Copying connectors to Connect container..."
+        # Connector installation is complete - the volumes are shared so Connect can now use them
+        
+        echo "Connector installation complete!"
+    volumes:
+      - connect-data:/usr/share/confluent-hub-components
+      - ./connect-config:/etc/kafka-connect
+      - ./custom-plugins:/etc/kafka-connect/custom-plugins
+      - ./jdbc-drivers:/usr/share/confluent-hub-components/jdbc-drivers
+      - ./mongodb-connect-config:/etc/kafka-connect/mongodb
+      - ./elasticsearch-connect-config:/etc/kafka-connect/elasticsearch
+      - ./s3-connect-config:/etc/kafka-connect/s3
+      - ./debezium-connect-config:/etc/kafka-connect/debezium
 
 #-----------------------------------------------------------------------------
 # Volume Definitions
