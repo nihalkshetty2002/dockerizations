@@ -12,10 +12,10 @@ async function setupConnectors() {
         config: {
             'connector.class': 'io.confluent.connect.jdbc.JdbcSourceConnector',
             'tasks.max': 1,
-            'connection.url': process.env.POSTGRES_CONNECTION_URL,
-            'connection.user': process.env.POSTGRES_USER,
-            'connection.password': process.env.POSTGRES_PASSWORD,
-            'table.whitelist': process.env.POSTGRES_TABLES,
+            'connection.url': "jdbc:postgresql://localhost:5432/postgres",
+            'connection.user': "postgres",
+            'connection.password': "admin",
+            'table.whitelist': "messages",
             'mode': 'incrementing',
             'incrementing.column.name': 'id',
             'topic.prefix': 'postgres-',
@@ -51,17 +51,17 @@ async function setupConnectors() {
         await connectService.createConnector(postgresSourceConfig);
         console.log('PostgreSQL Source Connector created successfully');
 
-        // Create MongoDB Sink Connector
-        console.log('Creating MongoDB Sink Connector...');
-        await connectService.createConnector(mongodbSinkConfig);
-        console.log('MongoDB Sink Connector created successfully');
+        // // Create MongoDB Sink Connector
+        // console.log('Creating MongoDB Sink Connector...');
+        // await connectService.createConnector(mongodbSinkConfig);
+        // console.log('MongoDB Sink Connector created successfully');
 
         // Verify connector status
         const sourceStatus = await connectService.getConnectorStatus('postgres-source-connector');
-        const sinkStatus = await connectService.getConnectorStatus('mongodb-sink-connector');
+        // const sinkStatus = await connectService.getConnectorStatus('mongodb-sink-connector');
 
         console.log('PostgreSQL Source Connector Status:', sourceStatus);
-        console.log('MongoDB Sink Connector Status:', sinkStatus);
+        // console.log('MongoDB Sink Connector Status:', sinkStatus);
 
     } catch (error) {
         console.error('Error setting up connectors:', error);
