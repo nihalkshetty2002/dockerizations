@@ -1,23 +1,27 @@
-const KafkaConnectService  = require('../NODEJS/src/services/KafkaConnectService');
+const KafkaConnectService = require('../NODEJS/src/services/KafkaConnectService');
 require('dotenv').config();
 
 async function setupConnectors() {
     const connectService = new KafkaConnectService({
         baseUrl: process.env.KAFKA_CONNECT_URL || 'http://localhost:8083'
     });
+    const sourceConnectorName = 'postgres-source-connector3';
 
     // PostgreSQL Source Connector Configuration
     const postgresSourceConfig = {
-        name: 'postgres-source-connector1',
+        name: sourceConnectorName,
         config: {
             'connector.class': 'io.confluent.connect.jdbc.JdbcSourceConnector',
             'tasks.max': 1,
-            'connection.url': "jdbc:postgresql://host.docker.internal:5432/postgres" ,
-            'connection.user': "postgres",
-            'connection.password': "admin",
-            'table.whitelist': "messages",
-            'mode': 'incrementing',
+            'connection.url': 'jdbc:postgresql://host.docker.internal:5432/postgres',
+            'connection.user': 'postgres',
+            'connection.password': 'admin',
+            'table.whitelist': 'messages',
+            'table.types': 'TABLE', // Explicitly specify table type
+            'mode': 'incrementing', // Capture new and updated rows
+            // 'timestamp.column.name': 'created_at', // Adjust to your timestamp column name
             'incrementing.column.name': 'id',
+            'poll.interval.ms': '1000', // Poll every 1 second
             'topic.prefix': 'postgres-',
             'transforms': 'createKey,extractInt',
             'transforms.createKey.type': 'org.apache.kafka.connect.transforms.ValueToKey',
@@ -27,9 +31,10 @@ async function setupConnectors() {
         }
     };
 
+    const sinkConnectorName = 'mongodb-sink-connector';
     // MongoDB Sink Connector Configuration
     const mongodbSinkConfig = {
-        name: 'mongodb-sink-connector',
+        name: sinkConnectorName,
         config: {
             'connector.class': 'com.mongodb.kafka.connect.MongoSinkConnector',
             'tasks.max': 1,
@@ -51,17 +56,22 @@ async function setupConnectors() {
         await connectService.createConnector(postgresSourceConfig);
         console.log('PostgreSQL Source Connector created successfully');
 
-        // Create MongoDB Sink Connector
+        // Create MongoDB Sink Connector (uncommented to ensure full pipeline)
         // console.log('Creating MongoDB Sink Connector...');
         // await connectService.createConnector(mongodbSinkConfig);
         // console.log('MongoDB Sink Connector created successfully');
 
-        // Verify connector status
-        const sourceStatus = await connectService.getConnectorStatus('postgres-source-connector');
-        // const sinkStatus = await connectService.getConnectorStatus('mongodb-sink-connector');
-
-        console.log('PostgreSQL Source Connector Status:', sourceStatus);
-        // console.log('MongoDB Sink Connector Status:', sinkStatus);
+        setTimeout(async () => {
+            // Verify connector status
+            try {
+                const sourceStatus = await connectService.getConnectorStatus(sourceConnectorName);
+                console.log('PostgreSQL Source Connector Status:', JSON.stringify(sourceStatus, null, 2));
+                // const sinkStatus = await connectService.getConnectorStatus(sinkConnectorName);
+                // console.log('MongoDB Sink Connector Status:', JSON.stringify(sinkStatus, null, 2));
+            } catch (statusError) {
+                console.error('Error fetching connector status:', statusError);
+            }
+        }, 5000);
 
     } catch (error) {
         console.error('Error setting up connectors:', error);
@@ -69,4 +79,4 @@ async function setupConnectors() {
 }
 
 // Run the setup
-setupConnectors().catch(console.error); 
+setupConnectors().catch(console.error);
